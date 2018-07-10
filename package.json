@@ -1,8 +1,8 @@
 {
   "name": "shield-http",
-  "version": "0.0.5",
+  "version": "0.0.7",
   "description": "restful http base",
-  "main": "lib/library.js",
+  "main": "lib/shield-http.js",
   "scripts": {
     "build-test": "webpack --env dev && webpack --env build && npm run test",
     "build": "webpack --env dev && webpack --env build ",

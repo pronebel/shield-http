@@ -7,7 +7,7 @@ import ICode from './icode';
 let emptyFunction = function () {
 };
 
-export class HttpExt {
+export default class HttpExt {
 
   /**
    * options:{
