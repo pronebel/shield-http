@@ -135,7 +135,14 @@ export default class HttpExt {
     return null;
 
   }
-  genCacheKey(url, data) {
+
+  /**
+   * 请求的 key, 用于缓存标记及请求队列
+   * @param url
+   * @param data
+   * @returns {string}
+   */
+  getUniqueKey(url, data) {
     return url + JSON.stringify(data);
   }
   cacheExist(key, update = false) {
@@ -165,15 +172,15 @@ export default class HttpExt {
 
     // 检查缓存里是否有数据
     let cachepattern = config.cache;
-    let cachekey = this.genCacheKey(config.url, config.data);
+    let httpKey = this.getUniqueKey(config.url, config.data);
 
-    if (this.cacheExist(cachekey, cachepattern && cachepattern.update)) {
-      return cache.get(cachekey);
+    if (this.cacheExist(httpKey, cachepattern && cachepattern.update)) {
+      return this.getCache(httpKey);
     }
 
     // 没有缓存则从服务器获取
 
-    let checkQueue = ajaxQueue.checkInQueue(cachekey);
+    let checkQueue = ajaxQueue.checkInQueue(httpKey);
 
     if (checkQueue) {
       return checkQueue;
@@ -204,13 +211,13 @@ export default class HttpExt {
 
           let resp = response.data;
 
-          ajaxQueue.remove(cachekey);
+          ajaxQueue.remove(httpKey);
           that.hideRequestState();
 
           let retCode = that.getResponseBizCode(resp);
 
           if (that.$code.isSuccess(retCode)) {
-            cachepattern && cache.set(cachekey, resp, cachepattern);
+            cachepattern && cache.set(httpKey, resp, cachepattern);
             resolve(that.getResponseData(resp));
           } else {
 
@@ -228,7 +235,7 @@ export default class HttpExt {
           }
         },
         fail: function (response) {
-          ajaxQueue.remove(cachekey)
+          ajaxQueue.remove(httpKey)
           that.hideRequestState();
           that.report(response);
           if (!silent) {
