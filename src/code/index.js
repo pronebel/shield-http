@@ -2,7 +2,7 @@
  * code判断
  * 假定:code是数字来设计的
  */
-export default class icode {
+export default class index {
 
   constructor(options) {
     this.$successCode = options.successCode;

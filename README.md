@@ -1,33 +1,20 @@
 
 
 
-#iAuth
+# Auth 需要的基础类
 
 
 
-```
-
-const STORE_KEYS = {
-
-  Token: 'TOKEN'
-
-}
-
-
-export let getToken = function () {
-
-}
-
-
-export let setToken = function (token) {
-
-}
-
-
-export let clear = function () {
-  for (let key in STORE_KEYS) {
-
+  ```
+  
+  export let getToken = function () {
+  
   }
-}
-
-```
+  export let setToken = function (token) {
+  
+  }
+  export let clear = function () {
+   
+  }
+  
+  ```

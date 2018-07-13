@@ -50,6 +50,7 @@
   },
   "dependencies": {
     "querystringify": "^2.0.0",
+    "shield-store": "^0.0.9",
     "url-join": "^4.0.0"
   }
 }

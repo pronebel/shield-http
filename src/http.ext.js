@@ -1,9 +1,9 @@
 import urljoin from 'url-join';
 import Params from 'querystringify';
-import {Methods, ContentType} from './constant';
-
-import ICode from './icode';
-
+import {Methods, ContentType} from './utils/constant';
+import {store, cache} from 'shield-store';
+import ICode from './code';
+import ajaxQueue from './queue/queue';
 let emptyFunction = function () {
 };
 
@@ -112,12 +112,49 @@ export default class HttpExt {
     console.log(str);
   }
 
+  getCache(key) {
+    // if (window.debug) {
+    //   return null;
+    // }
+    let that = this;
+    let resData = cache.get(key);
+
+    if (resData) {
+      return new Promise(function (resolve, reject) {
+        setTimeout(function () {
+          let retCode = that.getResponseBizCode(resData);
+
+          if (this.$code.isSuccess(retCode)) {
+            resolve(resData);
+          } else {
+            reject(resData);
+          }
+        }, 0);
+      });
+    }
+    return null;
+
+  }
+  genCacheKey(url, data) {
+    return url + JSON.stringify(data);
+  }
+  cacheExist(key, update = false) {
+    if (update) {
+      // 强制更新
+      cache.remove(key);
+      return false;
+    }
+    let resData = cache.get(key);
+
+    return !!resData;
+
+  }
   /**
    * http的封装
-   * @param opts:{
+   * @param config:{
  *
  *  cache:{       //cache不传则不开启
- *    exp:1,      //0 不开启
+ *    time:1,      //0 不开启
  *    read:-1,    //-1不开启
  *  }
  * }
@@ -125,6 +162,23 @@ export default class HttpExt {
    * @returns {*}
    */
   request(config) {
+
+    // 检查缓存里是否有数据
+    let cachepattern = config.cache;
+    let cachekey = this.genCacheKey(config.url, config.data);
+
+    if (this.cacheExist(cachekey, cachepattern && cachepattern.update)) {
+      return cache.get(cachekey);
+    }
+
+    // 没有缓存则从服务器获取
+
+    let checkQueue = ajaxQueue.checkInQueue(cachekey);
+
+    if (checkQueue) {
+      return checkQueue;
+    }
+
     let that = this;
     let headerConfig = Object.assign({}, this.headers, config.headers);
 
@@ -150,11 +204,13 @@ export default class HttpExt {
 
           let resp = response.data;
 
+          ajaxQueue.remove(cachekey);
           that.hideRequestState();
 
           let retCode = that.getResponseBizCode(resp);
 
           if (that.$code.isSuccess(retCode)) {
+            cachepattern && cache.set(cachekey, resp, cachepattern);
             resolve(that.getResponseData(resp));
           } else {
 
@@ -172,7 +228,7 @@ export default class HttpExt {
           }
         },
         fail: function (response) {
-
+          ajaxQueue.remove(cachekey)
           that.hideRequestState();
           that.report(response);
           if (!silent) {
