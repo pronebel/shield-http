@@ -11,7 +11,8 @@ export default class HttpExt {
 
   /**
    * options:{
-     *  apiPrefix:'api前缀'
+     *  apiPrefix:'api前缀',
+     *
      *  successCode:200,
      *  codes:[
      *      {
@@ -34,6 +35,7 @@ export default class HttpExt {
       timeout: 100000,
       defaultError: '报错啦'
     }, options);
+    this.$tokenKey = options.tokenKey || 'token';
     this.apiPrefix = options.apiPrefix;
     this.envTransferType = options.envTransferType;
 
@@ -84,7 +86,7 @@ export default class HttpExt {
     let token = this.getToken();
 
     if (token) {
-      envParams['token'] = token;
+      envParams[this.$tokenKey] = token;
     }
     return envParams;
   }
@@ -187,19 +189,22 @@ export default class HttpExt {
     }
 
     let that = this;
-    let headerConfig = Object.assign({}, this.headers, config.headers);
+    let headerConfig = {};
 
-    let loadingBar = config.progress === undefined ? this.options.progress : !!config.progress;
+    if (!config.noHeader) {
+      headerConfig = Object.assign({}, this.headers, config.headers);
+    }
+
     let silent = config.silent === undefined ? this.options.silent : !!config.silent;
 
-    this.showRequestState(loadingBar);
+    this.__showRequestState(config);
 
     let promise = new Promise(function (resolve, reject) {
 
       reject = reject || emptyFunction;
       let msgErrId = that.msgErrTag();
 
-      that.originalRequest({
+      return that.originalRequest({
         url: config.url,
         method: config.method || Methods.GET,
         data: config.data || {},
@@ -212,7 +217,7 @@ export default class HttpExt {
           let resp = response.data;
 
           ajaxQueue.remove(httpKey);
-          that.hideRequestState();
+          that.__hideRequestState(config);
 
           let retCode = that.getResponseBizCode(resp);
 
@@ -235,8 +240,8 @@ export default class HttpExt {
           }
         },
         fail: function (response) {
-          ajaxQueue.remove(httpKey)
-          that.hideRequestState();
+          ajaxQueue.remove(httpKey);
+          that.__hideRequestState(config);
           that.report(response);
           if (!silent) {
             let errResult = that.$code.proccessHttpError(that.getReponseHttpStatus(response));
@@ -254,6 +259,9 @@ export default class HttpExt {
     });
 
     return promise;
+  }
+  getLoadingState(config) {
+    return config.progress === undefined ? this.options.progress : !!config.progress;
   }
 
   getCacheKey(url, data) {
@@ -293,11 +301,20 @@ export default class HttpExt {
   }
 
   // ////////////////////////////////////  需要根据实际情况重载  //////////////////////////////////////////////////////
+  __showRequestState(config) {
+    let loadBar = this.getLoadingState(config);
+
+    return this.showRequestState(loadBar);
+  }
   showRequestState(loadingBar) {
 
     //
   }
+  __hideRequestState(config) {
+    let loadBar = this.getLoadingState(config);
 
+    return this.hideRequestState(loadBar);
+  }
   hideRequestState() {
     /*
 
