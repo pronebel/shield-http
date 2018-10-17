@@ -3,10 +3,9 @@
  * 假定:code是数字来设计的
  */
 export default class index {
-
   constructor(options) {
-    this.$successCode = options.successCode;
-    this.$status = options.status || [];
+    this.$successCode = options.successCode
+    this.$status = options.status || []
     /**
      * code=[{
          *  val:11111,
@@ -16,7 +15,7 @@ export default class index {
          * }]
      * @type {*|Array}
      */
-    this.$bizcode = options.codes || [];
+    this.$bizcode = options.codes || []
     /**
      * return {
          *      message:xxxx
@@ -24,9 +23,8 @@ export default class index {
          * }
      * @type {*|Error|MediaError|Function}
      */
-    this.assembleErrorMsg = options.error || function () {
-    };
-
+    this.assembleErrorMsg = options.error || function() {
+    }
   }
 
   isSuccess(code) {
@@ -42,65 +40,71 @@ export default class index {
       return true;
     }
     return false;
-
   }
 
   proccessHttpError(codeVal) {
-    let retErr = null;
+    let retErr = null
 
     for (let i = 0; i < this.$status.length; i++) {
-      let _code = this.$status[i];
+      const _code = this.$status[i]
 
       if (_code.val === codeVal) {
-        retErr = _code;
-        break;
+        retErr = _code
+        break
       }
     }
 
     if (retErr) {
-
       return {
         message: retErr.message
-      };
+      }
     }
-    return null;
-
+    return null
   }
 
-  processBizError(codeVal) {
-    let retErr = null;
-    let that = this;
+  getError(codeVal, codes = []) {
+    let retErr = null
+    const that = this
 
-    for (let i = 0; i < this.$bizcode.length; i++) {
-      let _code = this.$bizcode[i];
-      let checkVal = _code.val;
+    for (let i = 0; i < codes.length; i++) {
+      const _code = codes[i]
+      const checkVal = _code.val
 
-      let typename = typeof checkVal;
+      const typename = typeof checkVal
 
       if (typename === 'function') {
-
         if (checkVal.apply(that, [codeVal])) {
-          retErr = _code;
-          break;
+          retErr = _code
+          break
         }
-
       } else if (checkVal instanceof RegExp) {
         if (checkVal.test(codeVal)) {
-          retErr = _code;
-          break;
+          retErr = _code
+          break
         }
       } else if (_code.val === codeVal) {
-        retErr = _code;
-        break;
+        retErr = _code
+        break
       }
+    }
+    return retErr
+  }
+  processBizError(codeVal, customerCode = []) {
+    let retErr = null
+    const that = this
+
+    retErr = this.getError(codeVal, customerCode)
+
+    if (!retErr) {
+      retErr = this.getError(codeVal, this.$bizcode)
     }
 
     if (retErr) {
-      this.assembleErrorMsg(retErr);
-      return {};
+      return this.assembleErrorMsg(retErr)
+    } else {
+      return {
+        message: '服务器报错'
+      }
     }
-    return null;
-
   }
-
 }

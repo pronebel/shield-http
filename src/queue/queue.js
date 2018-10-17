@@ -5,20 +5,21 @@
 export default {
 
   checkInQueue: (key) => {
-    window.ajaxQueueData = window.ajaxQueueData || {};
-    let queue = window.ajaxQueueData;
+    window.ajaxQueueData = window.ajaxQueueData || {}
+    const queue = window.ajaxQueueData
 
     if (!queue[key]) { // not in
-      queue[key] = 1;
-      return null;
+      queue[key] = 1
+      return null
     }
-    return new Promise(function (resolve, reject) {
+    return new Promise(function(resolve, reject) {
 
-    });
-
+    })
   },
   remove(key) {
-    window.ajaxQueueData = window.ajaxQueueData || {};
-    delete window.ajaxQueueData[key];
+    window.ajaxQueueData = window.ajaxQueueData || {}
+    if (window.ajaxQueueData[key]) {
+      delete window.ajaxQueueData[key]
+    }
   }
-};
+}
