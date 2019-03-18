@@ -4,27 +4,17 @@
  */
 export default class index {
   constructor(options) {
-    this.$successCode = options.successCode
-    this.$status = options.status || []
-    /**
-     * code=[{
-         *  val:11111,
-         *  message:"1111111111111"
-         *
-         *
-         * }]
-     * @type {*|Array}
-     */
-    this.$bizcode = options.codes || []
+    this.$successCode = options.successCode;
+    this.$status = options.status || [];
+    this.$bizcode = options.codes || [];
     /**
      * return {
          *      message:xxxx
          *
          * }
-     * @type {*|Error|MediaError|Function}
      */
-    this.assembleErrorMsg = options.error || function() {
-    }
+    this.assembleErrorMsg = options.error || function () {
+    };
   }
 
   isSuccess(code) {
@@ -43,68 +33,66 @@ export default class index {
   }
 
   proccessHttpError(codeVal) {
-    let retErr = null
+    let retErr = null;
 
     for (let i = 0; i < this.$status.length; i++) {
-      const _code = this.$status[i]
+      const _code = this.$status[i];
 
       if (_code.val === codeVal) {
-        retErr = _code
-        break
+        retErr = _code;
+        break;
       }
     }
 
     if (retErr) {
       return {
         message: retErr.message
-      }
+      };
     }
-    return null
+    return null;
   }
 
   getError(codeVal, codes = []) {
-    let retErr = null
-    const that = this
+    let retErr = null;
+    const that = this;
 
     for (let i = 0; i < codes.length; i++) {
-      const _code = codes[i]
-      const checkVal = _code.val
+      const _code = codes[i];
+      const checkVal = _code.val;
 
-      const typename = typeof checkVal
+      const typename = typeof checkVal;
 
       if (typename === 'function') {
         if (checkVal.apply(that, [codeVal])) {
-          retErr = _code
-          break
+          retErr = _code;
+          break;
         }
       } else if (checkVal instanceof RegExp) {
         if (checkVal.test(codeVal)) {
-          retErr = _code
-          break
+          retErr = _code;
+          break;
         }
       } else if (_code.val === codeVal) {
-        retErr = _code
-        break
+        retErr = _code;
+        break;
       }
     }
-    return retErr
+    return retErr;
   }
   processBizError(codeVal, customerCode = []) {
-    let retErr = null
-    const that = this
 
-    retErr = this.getError(codeVal, customerCode)
+    let retErr = this.getError(codeVal, customerCode);
 
     if (!retErr) {
-      retErr = this.getError(codeVal, this.$bizcode)
+      retErr = this.getError(codeVal, this.$bizcode);
     }
 
     if (retErr) {
-      return this.assembleErrorMsg(retErr)
-    } else {
-      return {
-        message: '服务器报错'
-      }
+      return this.assembleErrorMsg(retErr);
     }
+    return {
+      message: '服务器报错'
+    };
+
   }
 }

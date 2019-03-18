@@ -1,3 +1,25 @@
+## shield-http
+
+  - code
+  - error 
+  - cache
+  - loading
+  - queue
+
+
+
+### Code 
+
+code定义
+
+    code =[
+      {
+        val: 'val',
+        message: "msg"
+      }
+    ]
+
+
 
 
 

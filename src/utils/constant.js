@@ -7,7 +7,7 @@ export const Methods = {
   PUT: 'PUT',
   DELETE: 'DELETE',
   PATCH: 'PATCH'
-}
+};
 
 /**
  * http-content-type
@@ -17,4 +17,4 @@ export const ContentType = {
   NORMAL: 'application/x-www-form-urlencoded',
   RESTFUL: 'application/json;charset=utf-8'
 
-}
+};
