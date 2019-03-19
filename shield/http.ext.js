@@ -1,6 +1,6 @@
 import urljoin from 'url-join';
 import Params from 'querystringify';
-import { Methods, ContentType } from './utils/constant';
+import { Methods, ContentType } from './core/constant';
 import { cache } from 'shield-store';
 import ICode from './code/index';
 import ajaxQueue from './queue/queue';
