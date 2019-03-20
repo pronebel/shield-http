@@ -1,19 +1,18 @@
 import utils from '../../axios-lib/utils';
 import axios from '../../axios-lib/axios';
 
+import axiosCreateError from '../../axios-lib/core/createError';
+
 import urljoin from 'url-join';
 import Params from 'querystringify';
-import {Methods, ContentType} from './constant';
+import Methods from '../constant/methods';
+import ContentType from '../constant/contentType';
 import {cache} from 'shield-store';
 import ICode from './code';
 import ajaxQueue from './queue';
 
 const emptyFunction = function () {
 };
-
-const defaultError = {
-  message: '报错啦'
-}
 
 export default class HttpExt {
   /**
@@ -40,19 +39,29 @@ export default class HttpExt {
       silent: false,
       timeout: 100000,
       tokenKey: 'token',
-      defaultError: defaultError
+      apiPrefix: '/',
+      defaultErrorMessage: 'request error'
     }, options);
 
-    this.apiPrefix = options.apiPrefix;
     this.envTransferType = options.envTransferType;
-
-    this.injectHeaders();
-
-    let {codes, status, error, isSuccess} = this.options || {};
-
-    this.$code = new ICode({codes, status, error, isSuccess});
     this.$axios = axiosInstance || axios;
 
+    this.injectHeaders();
+    this.injectGlobalCodes();
+    this.injectAuthority(auth);
+
+    /**
+     * refer Constant Var
+     */
+    this.METHODS = Methods;
+    this.CONTENT_TYPE = ContentType;
+  }
+
+  injectGlobalCodes() {
+    let {codes, status, error, isSuccess} = this.options || {};
+    this.$code = new ICode({codes, status, error, isSuccess});
+  }
+  injectAuthority(auth) {
     /**
      * 确保有以下几种方式:
      * getToken
@@ -60,8 +69,6 @@ export default class HttpExt {
      * clear
      */
     this.$auth = auth;
-
-    this.ContentType = ContentType;
   }
 
   /**
@@ -99,7 +106,7 @@ export default class HttpExt {
   mixUrlWithHeader(bizurl, params = {}, apiUrl) {
     const pathPrefix = this.options.pathPrefix || '';
 
-    return urljoin((apiUrl || this.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
+    return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
   }
 
   mixUrl(bizurl, params = {}, apiUrl) {
@@ -112,13 +119,13 @@ export default class HttpExt {
       for (const key in envParams) {
         this.headers[key] = envParams[key];
       }
-      return urljoin((apiUrl || this.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
+      return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
     } else if (transferType === 'URL') {
       const getPramas = Object.assign({}, envParams, params);
 
-      return urljoin((apiUrl || this.apiPrefix), pathPrefix, bizurl, Params.stringify(getPramas, '?'));
+      return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(getPramas, '?'));
     }
-    return urljoin((apiUrl || this.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
+    return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
 
   }
 
