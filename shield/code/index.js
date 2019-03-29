@@ -1,14 +1,14 @@
-var shildUtils = require('../utils');
+const shildeUtils = require('../utils/index');
 
 function emptyFunction() {
 
-  return function () {
-
+  return function (err) {
+    return err;
   };
 
 }
 
-class Code {
+class ICode {
   constructor(options) {
     this.$status = options.status || [];
     this.$bizcode = options.codes || [];
@@ -37,7 +37,7 @@ class Code {
     for (let i = 0; i < codes.length; i++) {
       let _code = codes[i];
 
-      if (shildUtils.checkValueByOperator(_code.val, codeVal, this)) {
+      if (shildeUtils.checkValueByOperator(_code.val, codeVal, this)) {
         retErr = _code;
         break;
       }

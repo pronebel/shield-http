@@ -5,13 +5,27 @@ import axiosCreateError from '../../axios-lib/core/createError';
 
 import urljoin from 'url-join';
 import Params from 'querystringify';
-import Methods from '../constant/methods';
-import ContentType from '../constant/contentType';
+import Methods from '../constant/method';
+import ContentType from '../constant/content';
+import sessionType from '../constant/session'
 import {cache} from 'shield-store';
-import ICode from './code';
+import ICode from '../code/code';
 import ajaxQueue from './queue';
 
 const emptyFunction = function () {
+};
+
+/**
+ * default options
+ * 默认options配置
+ */
+let defaultOptions = {
+  progress: true,
+  silent: false,
+  timeout: 10000,
+  tokenKey: 'session',
+  apiPrefix: '/',
+  defaultErrorMessage: 'request error'
 };
 
 export default class HttpExt {
@@ -34,14 +48,7 @@ export default class HttpExt {
    * @param options
    */
   constructor(options, auth, axiosInstance) {
-    this.options = Object.assign({
-      progress: true,
-      silent: false,
-      timeout: 100000,
-      tokenKey: 'token',
-      apiPrefix: '/',
-      defaultErrorMessage: 'request error'
-    }, options);
+    this.options = Object.assign(defaultOptions, options);
 
     this.envTransferType = options.envTransferType;
     this.$axios = axiosInstance || axios;
@@ -59,6 +66,7 @@ export default class HttpExt {
 
   injectGlobalCodes() {
     let {codes, status, error, isSuccess} = this.options || {};
+
     this.$code = new ICode({codes, status, error, isSuccess});
   }
   injectAuthority(auth) {
@@ -88,19 +96,20 @@ export default class HttpExt {
   }
 
   getToken() {
-    return this.$auth.getToken ? this.$auth.getToken() : null;
+    return null;
+    // return this.$auth.getToken ? this.$auth.getToken() : null;
   }
 
+  uri(){
+    const pathPrefix = this.options.pathPrefix || '';
+    return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
+  },
+  /**
+   * virtual: getSystemInfo
+   */
   getSystemInfo() {
-    const getInfoFunc = this.options.getSystemInfo;
-    const envParams = getInfoFunc.call(this, ...arguments);
-
-    const token = this.getToken();
-
-    if (token) {
-      envParams[this.options.tokenKey] = token;
-    }
-    return envParams;
+    // ....
+    return {};
   }
 
   mixUrlWithHeader(bizurl, params = {}, apiUrl) {
@@ -112,15 +121,15 @@ export default class HttpExt {
   mixUrl(bizurl, params = {}, apiUrl) {
     const envParams = this.getSystemInfo();
 
-    const pathPrefix = this.options.pathPrefix || '';
+
     const transferType = this.envTransferType.toUpperCase();
 
-    if (transferType === 'HEADER') {
+    if (transferType === sessionType.HEADER) {
       for (const key in envParams) {
         this.headers[key] = envParams[key];
       }
       return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
-    } else if (transferType === 'URL') {
+    } else if (transferType === sessionType.QUERY) {
       const getPramas = Object.assign({}, envParams, params);
 
       return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(getPramas, '?'));

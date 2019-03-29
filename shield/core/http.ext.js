@@ -1,11 +1,21 @@
-import urljoin from 'url-join'
-import Params from 'querystringify'
-import { Methods, ContentType } from './utils/constant'
-import { cache } from 'shield-store'
-import ICode from './code/index'
-import ajaxQueue from './queue/queue'
+import urljoin from 'url-join';
+import Params from 'querystringify';
+import { Methods, ContentType } from './utils/constant';
+import { cache } from 'shield-store';
+import ICode from './code/index';
+import ajaxQueue from './queue/queue';
 
-const emptyFunction = function() {}
+const emptyFunction = function () {};
+
+let defaultOptions = {
+  progress: true,
+  silent: false,
+  timeout: 10000,
+  tokenKey: 'session',
+  defaultError: {
+    message: 'request error'
+  }
+};
 
 export default class HttpExt {
   /**
@@ -27,26 +37,16 @@ export default class HttpExt {
    * @param options
    */
   constructor(options, auth, axiosInstance) {
-    this.options = Object.assign(
-      {
-        progress: true,
-        silent: false,
-        timeout: 100000,
-        defaultError: {
-          message: '报错啦'
-        }
-      },
-      options
-    )
-    this.$tokenKey = options.tokenKey || 'token'
-    this.apiPrefix = options.apiPrefix
-    this.envTransferType = options.envTransferType
+    this.options = Object.assign(defaultOptions,options);
+    this.$tokenKey = options.tokenKey || 'token';
+    this.apiPrefix = options.apiPrefix;
+    this.envTransferType = options.envTransferType;
 
-    this.injectHeaders()
-    this.ContentType = ContentType
+    this.injectHeaders();
+    this.ContentType = ContentType;
 
-    this.$code = new ICode(this.options)
-    this.$axios = axiosInstance
+    this.$code = new ICode(this.options);
+    this.$axios = axiosInstance;
 
     /**
      * 确保有以下几种方式:
@@ -54,108 +54,110 @@ export default class HttpExt {
      * setToken
      * clear
      */
-    this.$auth = auth
+    this.$auth = auth;
   }
 
   /**
    * 设置头部 header 变量
    */
   injectHeaders() {
-    let headerConfig = {}
+    let headerConfig = {};
 
     if (this.options.isStream) {
-      headerConfig = undefined // 'application/octet-stream';
+      headerConfig = undefined; // 'application/octet-stream';
     } else if (this.options.isForm) {
-      headerConfig['content-type'] = ContentType.NORMAL
+      headerConfig['content-type'] = ContentType.NORMAL;
     } else {
-      headerConfig['content-type'] = ContentType.RESTFUL
+      headerConfig['content-type'] = ContentType.RESTFUL;
     }
-    this.headers = Object.assign({}, headerConfig, this.options.headers)
+    this.headers = Object.assign({}, headerConfig, this.options.headers);
   }
 
   getToken() {
-    return this.$auth.getToken ? this.$auth.getToken() : null
+    return this.$auth.getToken ? this.$auth.getToken() : null;
   }
 
   getSystemInfo() {
-    const getInfoFunc = this.options.getSystemInfo
-    const envParams = getInfoFunc.call(this, ...arguments)
+    const getInfoFunc = this.options.getSystemInfo;
+    const envParams = getInfoFunc.call(this, ...arguments);
 
-    const token = this.getToken()
+    const token = this.getToken();
 
     if (token) {
-      envParams[this.$tokenKey] = token
+      envParams[this.$tokenKey] = token;
     }
-    return envParams
+    return envParams;
   }
   mixUrlWithHeader(bizurl, params = {}, apiUrl) {
-    const pathPrefix = this.options.pathPrefix || ''
+    const pathPrefix = this.options.pathPrefix || '';
 
     return urljoin(
       apiUrl || this.apiPrefix,
       pathPrefix,
       bizurl,
       Params.stringify(params, '?')
-    )
+    );
   }
   mixUrl(bizurl, params = {}, apiUrl) {
-    const envParams = this.getSystemInfo()
+    const envParams = this.getSystemInfo();
 
-    const pathPrefix = this.options.pathPrefix || ''
-    const transferType = this.envTransferType.toUpperCase()
+    const pathPrefix = this.options.pathPrefix || '';
+    const transferType = this.envTransferType.toUpperCase();
+
     if (transferType === 'HEADER') {
       for (const key in envParams) {
-        this.headers[key] = envParams[key]
+        this.headers[key] = envParams[key];
       }
       return urljoin(
         apiUrl || this.apiPrefix,
         pathPrefix,
         bizurl,
         Params.stringify(params, '?')
-      )
+      );
     } else if (transferType === 'URL') {
-      const getPramas = Object.assign({}, envParams, params)
+      const getPramas = Object.assign({}, envParams, params);
+
       return urljoin(
         apiUrl || this.apiPrefix,
         pathPrefix,
         bizurl,
         Params.stringify(getPramas, '?')
-      )
-    } else {
-      return urljoin(
-        apiUrl || this.apiPrefix,
-        pathPrefix,
-        bizurl,
-        Params.stringify(params, '?')
-      )
+      );
     }
+    return urljoin(
+      apiUrl || this.apiPrefix,
+      pathPrefix,
+      bizurl,
+      Params.stringify(params, '?')
+    );
+
   }
 
   log(str) {
-    console.log(str)
+    console.log(str);
   }
 
   getCache(key) {
     // if (window.debug) {
     //   return null;
     // }
-    const that = this
-    const resData = cache.get(key)
+    const that = this;
+    const resData = cache.get(key);
 
     if (resData) {
-      return new Promise(function(resolve, reject) {
-        setTimeout(function() {
-          const retCode = that.getResponseBizCode(resData)
+      return new Promise(function (resolve, reject) {
+        setTimeout(function () {
+          const retCode = that.getResponseBizCode(resData);
 
           if (this.$code.isSuccess(retCode)) {
-            resolve(resData)
+            resolve(resData);
           } else {
-            reject(resData)
+            reject(resData);
           }
-        }, 0)
-      })
+        }, 0);
+      });
     }
-    return null
+    return null;
   }
 
   /**
@@ -165,39 +167,39 @@ export default class HttpExt {
    * @returns {string}
    */
   getUniqueKey(url, data) {
-    return url + JSON.stringify(data)
+    return url + JSON.stringify(data);
   }
 
   cacheExist(key, update = false) {
     if (update) {
       // 强制更新
-      cache.remove(key)
-      return false
+      cache.remove(key);
+      return false;
     }
-    const resData = cache.get(key)
+    const resData = cache.get(key);
 
-    return !!resData
+    return !!resData;
   }
 
   $prepare(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl)
-    opts.cacheKey = this.getUniqueKey(opts.url, opts.data)
-    opts.method = Methods.POST
+    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
+    opts.cacheKey = this.getUniqueKey(opts.url, opts.data);
+    opts.method = Methods.POST;
 
     if (data.toString() === '[object Array]') {
-      opts.data = data
+      opts.data = data;
     } else {
-      opts.data = Object.assign({}, data)
+      opts.data = Object.assign({}, data);
     }
 
-    let headerConfig = {}
+    let headerConfig = {};
 
     if (!opts.noHeader) {
-      headerConfig = Object.assign({}, this.headers, opts.headers)
+      headerConfig = Object.assign({}, this.headers, opts.headers);
     }
-    opts.headers = headerConfig
+    opts.headers = headerConfig;
 
-    return opts
+    return opts;
   }
 
   /**
@@ -214,11 +216,11 @@ export default class HttpExt {
    */
   request(config) {
     // 检查缓存里是否有数据
-    const cachepattern = config.cache
-    const httpKey = this.getUniqueKey(config.url, config.data)
+    const cachepattern = config.cache;
+    const httpKey = this.getUniqueKey(config.url, config.data);
 
     if (this.cacheExist(httpKey, cachepattern && cachepattern.update)) {
-      return this.getCache(httpKey)
+      return this.getCache(httpKey);
     }
 
     // 没有缓存则从服务器获取
@@ -229,23 +231,23 @@ export default class HttpExt {
     //   return checkQueue
     // }
 
-    const that = this
-    let headerConfig = {}
+    const that = this;
+    let headerConfig = {};
 
     if (!config.noHeader) {
-      headerConfig = Object.assign({}, this.headers, config.headers)
+      headerConfig = Object.assign({}, this.headers, config.headers);
     }
 
-    let customeCodes = config.codes || []
+    let customeCodes = config.codes || [];
 
     const silent =
-      config.silent === undefined ? this.options.silent : !!config.silent
+      config.silent === undefined ? this.options.silent : !!config.silent;
 
-    this.__showRequestState(config)
+    this.__showRequestState(config);
 
-    const promise = new Promise(function(resolve, reject) {
-      reject = reject || emptyFunction
-      const msgErrId = that.msgErrTag()
+    const promise = new Promise(function (resolve, reject) {
+      reject = reject || emptyFunction;
+      const msgErrId = that.msgErrTag();
 
       return that
         .$axios({
@@ -257,26 +259,26 @@ export default class HttpExt {
           timeout: that.options.timeout
         })
         .then(response => {
-          const resp = response.data
+          const resp = response.data;
 
-          ajaxQueue.remove(httpKey)
-          that.__hideRequestState(config)
+          ajaxQueue.remove(httpKey);
+          that.__hideRequestState(config);
 
-          const retCode = that.getResponseBizCode(resp)
+          const retCode = that.getResponseBizCode(resp);
 
           if (that.$code.isSuccess(retCode)) {
-            cachepattern && cache.set(httpKey, resp, cachepattern)
-            resolve(that.getResponseData(resp))
+            cachepattern && cache.set(httpKey, resp, cachepattern);
+            resolve(that.getResponseData(resp));
           } else {
-            that.report(response)
+            that.report(response);
             if (!silent) {
               const errResult = that.$code.processBizError(
                 retCode,
                 customeCodes
-              )
+              );
 
               if (errResult) {
-                that.showError(errResult || that.options.defaultError)
+                that.showError(errResult || that.options.defaultError);
               }
             }
 
@@ -284,93 +286,93 @@ export default class HttpExt {
               response,
               msgErrId,
               biz: 1
-            })
+            });
           }
         })
         .catch(response => {
-          ajaxQueue.remove(httpKey)
-          that.__hideRequestState(config)
-          that.report(response)
+          ajaxQueue.remove(httpKey);
+          that.__hideRequestState(config);
+          that.report(response);
           if (!silent) {
             const errResult = that.$code.proccessHttpError(
               that.getReponseHttpStatus(response),
               customeCodes
-            )
+            );
 
             if (errResult) {
-              that.showError(errResult.message || that.options.defaultError)
+              that.showError(errResult.message || that.options.defaultError);
             }
           }
 
           reject({
             response,
             msgErrId
-          })
-        })
-    })
+          });
+        });
+    });
 
-    return promise
+    return promise;
   }
 
   getLoadingState(config) {
-    return config.progress === undefined
-      ? this.options.progress
-      : !!config.progress
+    return config.progress === undefined ?
+      this.options.progress :
+      !!config.progress;
   }
 
   $put(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl)
+    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
 
-    opts.method = Methods.PUT
+    opts.method = Methods.PUT;
 
-    opts.data = data
+    opts.data = data;
 
-    return this.request(opts)
+    return this.request(opts);
   }
 
   $delete(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl)
-    opts.method = Methods.DELETE
-    opts.data = data
+    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
+    opts.method = Methods.DELETE;
+    opts.data = data;
 
-    return this.request(opts)
+    return this.request(opts);
   }
 
   $post(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl)
+    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
 
-    opts.method = Methods.POST
+    opts.method = Methods.POST;
 
     if (data.toString() === '[object Array]') {
-      opts.data = data
+      opts.data = data;
     } else {
-      opts.data = Object.assign({}, data)
+      opts.data = Object.assign({}, data);
     }
 
-    return this.request(opts)
+    return this.request(opts);
   }
 
   $get(url, data = {}, opts = {}) {
-    const params = Object.assign({}, data)
+    const params = Object.assign({}, data);
 
-    opts.url = this.mixUrl(url, params, opts.apiUrl)
+    opts.url = this.mixUrl(url, params, opts.apiUrl);
 
-    opts.method = Methods.GET
+    opts.method = Methods.GET;
 
-    return this.request(opts)
+    return this.request(opts);
   }
 
   msgErrTag() {
     return Math.random()
       .toString(36)
-      .substring(2, 15)
+      .substring(2, 15);
   }
 
   // ////////////////////////////////////  需要根据实际情况重载  //////////////////////////////////////////////////////
   __showRequestState(config) {
-    const loadBar = this.getLoadingState(config)
+    const loadBar = this.getLoadingState(config);
 
-    return this.showRequestState(loadBar)
+    return this.showRequestState(loadBar);
   }
 
   showRequestState(loadingBar) {
@@ -378,9 +380,9 @@ export default class HttpExt {
   }
 
   __hideRequestState(config) {
-    const loadBar = this.getLoadingState(config)
+    const loadBar = this.getLoadingState(config);
 
-    return this.hideRequestState(loadBar)
+    return this.hideRequestState(loadBar);
   }
 
   hideRequestState() {
@@ -403,6 +405,6 @@ export default class HttpExt {
   getResponseBizCode(resp) {}
 
   getReponseHttpStatus(response) {
-    return null
+    return null;
   }
 }
