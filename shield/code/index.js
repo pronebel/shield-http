@@ -47,4 +47,4 @@ class ICode {
   }
 }
 
-module.exports = Code;
+module.exports = ICode;

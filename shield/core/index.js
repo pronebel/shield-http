@@ -1,16 +1,18 @@
 import utils from '../../axios-lib/utils';
 import axios from '../../axios-lib/axios';
-
+import rules from './rule';
 import axiosCreateError from '../../axios-lib/core/createError';
 
 import urljoin from 'url-join';
 import Params from 'querystringify';
 import Methods from '../constant/method';
 import ContentType from '../constant/content';
-import sessionType from '../constant/session'
+import sessionType from '../constant/session';
 import {cache} from 'shield-store';
-import ICode from '../code/code';
+import ICode from '../code';
 import ajaxQueue from './queue';
+
+import logger from './logger';
 
 const emptyFunction = function () {
 };
@@ -25,6 +27,8 @@ let defaultOptions = {
   timeout: 10000,
   tokenKey: 'session',
   apiPrefix: '/',
+  pathPrefix: '/',
+  cacheMethods: [Methods.GET],
   defaultErrorMessage: 'request error'
 };
 
@@ -50,7 +54,7 @@ export default class HttpExt {
   constructor(options, auth, axiosInstance) {
     this.options = Object.assign(defaultOptions, options);
 
-    this.envTransferType = options.envTransferType;
+    this.transterType = options.transterType;
     this.$axios = axiosInstance || axios;
 
     this.injectHeaders();
@@ -80,7 +84,7 @@ export default class HttpExt {
   }
 
   /**
-   * 设置头部 header 变量
+   * 设置默认的全局头部header变量
    */
   injectHeaders() {
     let headerConfig = {};
@@ -95,15 +99,25 @@ export default class HttpExt {
     this.headers = Object.assign({}, headerConfig, this.options.headers);
   }
 
+  /**
+   * virtual:getToken
+   * @returns {null}
+   */
   getToken() {
     return null;
     // return this.$auth.getToken ? this.$auth.getToken() : null;
   }
 
-  uri(){
-    const pathPrefix = this.options.pathPrefix || '';
-    return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
-  },
+  mixUri(bizurl, params = {}, apiUrl) {
+    let arr = [];
+
+    arr.push(apiUrl || this.options.apiPrefix);
+    arr.push(this.options.pathPrefix || '');
+    arr.push(bizurl);
+    arr.push(Params.stringify(params, '?'));
+
+    return urljoin.apply(null, arr);
+  }
   /**
    * virtual: getSystemInfo
    */
@@ -112,40 +126,29 @@ export default class HttpExt {
     return {};
   }
 
-  mixUrlWithHeader(bizurl, params = {}, apiUrl) {
-    const pathPrefix = this.options.pathPrefix || '';
-
-    return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
-  }
-
   mixUrl(bizurl, params = {}, apiUrl) {
-    const envParams = this.getSystemInfo();
 
+    const transferType = this.transterType.toUpperCase();
 
-    const transferType = this.envTransferType.toUpperCase();
+    if (transferType === sessionType.QUERY) {
+      const envParams = this.getSystemInfo();
 
-    if (transferType === sessionType.HEADER) {
-      for (const key in envParams) {
-        this.headers[key] = envParams[key];
-      }
-      return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
-    } else if (transferType === sessionType.QUERY) {
-      const getPramas = Object.assign({}, envParams, params);
-
-      return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(getPramas, '?'));
+      return this.mixUri(
+        bizurl,
+        Object.assign({}, envParams, params),
+        apiUrl
+      );
     }
-    return urljoin((apiUrl || this.options.apiPrefix), pathPrefix, bizurl, Params.stringify(params, '?'));
+    return this.mixUri(bizurl, params, apiUrl);
 
   }
 
-  log(str) {
-    console.log(str);
-  }
-
-  getCache(key) {
-    // if (window.debug) {
-    //   return null;
-    // }
+  /**
+   * 获取请求的缓存
+   * @param key
+   * @returns {*}
+   */
+  requestCache(key) {
     const that = this;
     const resData = cache.get(key);
 
@@ -175,9 +178,14 @@ export default class HttpExt {
     return url + JSON.stringify(data);
   }
 
+  /**
+   * 检查缓存是否存在,
+   * @param key:缓存的key
+   * @param update:是否强制更新
+   * @returns {boolean}
+   */
   cacheExist(key, update = false) {
     if (update) {
-      // 强制更新
       cache.remove(key);
       return false;
     }
@@ -186,27 +194,23 @@ export default class HttpExt {
     return !!resData;
   }
 
-  $prepare(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
-    opts.cacheKey = this.getUniqueKey(opts.url, opts.data);
-    opts.method = Methods.POST;
+  /**
+   * 单独为每个请求实例化请求的header
+   * @param config
+   * @returns {*}
+   */
+  prepareHeader(config) {
+    if (!config.noHeader) {
+      let envParams = {};
 
-    if (data.toString() === '[object Array]') {
-      opts.data = data;
-    } else {
-      opts.data = Object.assign({}, data);
+      if (this.transterType.toUpperCase() === sessionType.HEADER) {
+        envParams = this.getSystemInfo();
+      }
+      return Object.assign({}, this.headers, envParams, config.headers);
     }
+    return {};
 
-    let headerConfig = {};
-
-    if (!opts.noHeader) {
-      headerConfig = Object.assign({}, this.headers, opts.headers);
-    }
-    opts.headers = headerConfig;
-
-    return opts;
   }
-
   /**
    * http的封装
    * @param config:{
@@ -219,16 +223,37 @@ export default class HttpExt {
    * @param parseFunc
    * @returns {*}
    */
-  request(config) {
-    // 检查缓存里是否有数据
-    const cachepattern = config.cache;
+  request(url, reqData, config) {
+    let {data, query} = reqData;
+
+    config.url = this.mixUrl(url, query, config.apiUrl);
+    config.data = data;
     const httpKey = this.getUniqueKey(config.url, config.data);
 
-    if (this.cacheExist(httpKey, cachepattern && cachepattern.update)) {
-      return this.getCache(httpKey);
-    }
+    // 检查缓存里是否有数据
+    const pattern = rules.cacheEnableInMethod(config.method, this.options.cacheMethods) ? config.cache : null;
 
-    // 没有缓存则从服务器获取
+    if (pattern && this.cacheExist(httpKey, pattern && pattern.update)) {
+      return this.requestCache(httpKey);
+    }
+    return this.requestExec(config, httpKey, pattern);
+  }
+  beforeRequest(config) {
+    this.__showRequestState(config);
+  }
+  afterRequest(config) {
+
+    this.__hideRequestState(config);
+  }
+  /**
+   *
+   * @param config
+   * @param httpKey
+   * @param cachepattern:缓存策略
+   * @returns {Promise<any>}
+   */
+  requestExec(config, httpKey, cachepattern) {
+    this.beforeRequest(config);
 
     // const checkQueue = ajaxQueue.checkInQueue(httpKey)
     //
@@ -237,34 +262,24 @@ export default class HttpExt {
     // }
 
     const that = this;
-    let headerConfig = {};
-
-    if (!config.noHeader) {
-      headerConfig = Object.assign({}, this.headers, config.headers);
-    }
-
-    let customeCodes = config.codes || [];
 
     const silent = config.silent === undefined ? this.options.silent : !!config.silent;
 
-    this.__showRequestState(config);
-
     const promise = new Promise(function (resolve, reject) {
       reject = reject || emptyFunction;
-      const msgErrId = that.msgErrTag();
 
       return that.$axios({
         url: config.url,
         method: config.method || Methods.GET,
         data: config.data || {},
-        headers: headerConfig,
+        headers: this.prepareHeader(config),
         cache: false,
         timeout: that.options.timeout
       }).then((response) => {
         const resp = response.data;
 
         ajaxQueue.remove(httpKey);
-        that.__hideRequestState(config);
+        that.afterRequest(config);
 
         const retCode = that.getResponseBizCode(resp);
 
@@ -274,28 +289,18 @@ export default class HttpExt {
         } else {
           that.report(response);
           if (!silent) {
-            const errResult = that.$code.processBizError(retCode, customeCodes);
-
-            if (errResult) {
-              that.showError(errResult || that.options.defaultError);
-            }
+            that.__showError(retCode, config.codes);
           }
-
-          reject({response, msgErrId, biz: 1});
+          reject({response, msgErrId: that.msgErrTag(), biz: 1});
         }
       }).catch((response) => {
         ajaxQueue.remove(httpKey);
-        that.__hideRequestState(config);
+        that.afterRequest(config);
         that.report(response);
         if (!silent) {
-          const errResult = that.$code.proccessHttpError(that.getReponseHttpStatus(response), customeCodes);
-
-          if (errResult) {
-            that.showError(errResult.message || that.options.defaultError);
-          }
+          that.__showError(that.getReponseHttpStatus(response));
         }
-
-        reject({response, msgErrId});
+        reject({response, msgErrId: that.msgErrTag()});
       });
     });
 
@@ -306,68 +311,67 @@ export default class HttpExt {
     return config.progress === undefined ? this.options.progress : !!config.progress;
   }
 
-  $put(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
+  $prepare(url, reqData = {}, opts = {}) {
+    let {data, query} = reqData;
+
+    opts.url = this.mixUrl(url, query, opts.apiUrl);
+    opts.data = data;
+    let headerConfig = {};
+
+    if (!opts.noHeader) {
+      headerConfig = Object.assign({}, this.headers, opts.headers);
+    }
+    opts.headers = headerConfig;
+
+    return opts;
+  }
+
+  $put(url, reqData = {}, opts = {}) {
 
     opts.method = Methods.PUT;
-
-    opts.data = data;
-
-    return this.request(opts);
+    return this.request(url, reqData, opts);
   }
 
-  $delete(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
+  $delete(url, reqData = {}, opts = {}) {
+
     opts.method = Methods.DELETE;
-    opts.data = data;
 
-    return this.request(opts);
+    return this.request(url, reqData, opts);
   }
 
-  $post(url, data = {}, opts = {}, urlParam = {}) {
-    opts.url = this.mixUrl(url, Object.assign({}, urlParam), opts.apiUrl);
+  $post(url, reqData = {}, opts = {}) {
 
     opts.method = Methods.POST;
 
-    if (data.toString() === '[object Array]') {
-      opts.data = data;
-    } else {
-      opts.data = Object.assign({}, data);
-    }
-
-    return this.request(opts);
+    return this.request(url, reqData, opts);
   }
 
-  $get(url, data = {}, opts = {}) {
-    const params = Object.assign({}, data);
-
-    opts.url = this.mixUrl(url, params, opts.apiUrl);
+  $get(url, reqData = {}, opts = {}) {
 
     opts.method = Methods.GET;
 
-    return this.request(opts);
+    return this.request(url, reqData, opts);
   }
 
   msgErrTag() {
     return Math.random().toString(36).substring(2, 15);
   }
-
-  // ////////////////////////////////////  需要根据实际情况重载  //////////////////////////////////////////////////////
   __showRequestState(config) {
     const loadBar = this.getLoadingState(config);
 
     return this.showRequestState(loadBar);
   }
-
-  showRequestState(loadingBar) {
-
-    //
-  }
-
   __hideRequestState(config) {
     const loadBar = this.getLoadingState(config);
 
     return this.hideRequestState(loadBar);
+  }
+
+  // ////////////////////////////////////  需要根据实际情况重载  //////////////////////////////////////////////////////
+
+  showRequestState(loadingBar) {
+
+    //
   }
 
   hideRequestState() {
@@ -379,25 +383,48 @@ export default class HttpExt {
      */
   }
 
-  showError(resp) {
+  __showError(retCode, customCode, isBizError) {
+    const errResult = isBizError ? this.$code.checkBiz(retCode, customCode) : this.$code.checkHttp(retCode);
+
+    if (errResult) {
+      this.showError(errResult.message || this.options.defaultErrorMessage);
+    }
+  }
+  showError(message) {
 
     // dialog.alert(resp.retMessage || resp.exception || "服务器错误")
 
   }
 
+  /**
+   * virtual
+   * @param resp
+   */
   report() {
 
   }
 
+  /**
+   * virtual
+   * @param resp
+   */
   getResponseData(resp) {
 
   }
 
+  /**
+   * virtual
+   * @param resp
+   */
   getResponseBizCode(resp) {
 
   }
 
-  getReponseHttpStatus(response) {
+  /**
+   * virtual
+   * @param resp
+   */
+  getReponseHttpStatus(resp) {
     return null;
   }
 }
