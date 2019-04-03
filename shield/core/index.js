@@ -10,8 +10,9 @@ import ContentType from '../constant/content';
 import sessionType from '../constant/session';
 import {cache} from 'shield-store';
 import ICode from '../code';
-import ajaxQueue from './queue';
-import CancelToken from '../../axios-lib/cancel/CancelToken'
+import QueueManager from './queue';
+import CancelManager from './cancel';
+import CancelToken from '../../axios-lib/cancel/CancelToken';
 
 import logger from './logger';
 
@@ -28,10 +29,13 @@ let defaultOptions = {
   progress: true,
   silent: false,
   timeout: 10000,
+  method: Methods.GET,
   tokenKey: 'session',
   apiPrefix: '/',
   pathPrefix: '/',
   cacheMethods: [Methods.GET],
+  cancelToken: null,
+  enableCancel: false,
   defaultErrorMessage: 'request error',
   isSuccess: function () {
     return true;
@@ -219,13 +223,7 @@ export default class HttpExt {
     return {};
 
   }
-  genCancelToken(){
-    let uuid = uuidv4();
-    return new CancelToken((c)=>{
-      // 这里的ajax标识我是用请求地址&请求方式拼接的字符串，当然你可以选择其他的一些方式
-      pending.push({ u: config.url + '&' + config.method, f: c });
-    });
-  }
+
   /**
    * http的封装
    * @param config:{
@@ -238,13 +236,9 @@ export default class HttpExt {
    * @param parseFunc
    * @returns {*}
    */
-  request(url, reqData, config) {
-    let {data, query} = reqData;
+  request(config) {
 
-    config.url = this.mixUrl(url, query, config.apiUrl);
-    config.data = data;
-
-    const httpKey = this.getUniqueKey(config);
+    const httpKey = config.httpKey;
 
     // 检查缓存里是否有数据
     const pattern = rules.cacheEnableInMethod(config.method, this.options.cacheMethods) ? config.cache : null;
@@ -261,6 +255,10 @@ export default class HttpExt {
 
     this.__hideRequestState(config);
   }
+
+  checkReponseTypeIsFile(responseType) {
+    return responseType && (responseType.toLowerCase() === 'stream' || responseType.toLowerCase() === 'blob');
+  }
   /**
    *
    * @param config
@@ -271,56 +269,77 @@ export default class HttpExt {
   requestExec(config, httpKey, cachepattern) {
     this.beforeRequest(config);
 
-    // const checkQueue = ajaxQueue.checkInQueue(httpKey)
-    //
-    // if (checkQueue) {
-    //   return checkQueue
-    // }
-
     const that = this;
 
+    config.cancelToken = null;
+    if (config.enableCancel === true) {
+      config.cancelToken = this.genCancelToken(httpKey);
+    }
     const silent = config.silent === undefined ? this.options.silent : !!config.silent;
 
-    const promise = new Promise(function (resolve, reject) {
-      reject = reject || emptyFunction;
+    function request() {
 
-      return that.$axios({
-        url: config.url,
-        method: config.method || Methods.GET,
-        data: config.data || {},
-        headers: this.prepareHeader(config),
-        cache: false,
-        timeout: that.options.timeout
-      }).then((response) => {
-        const resp = response.data;
+      const promise = new Promise(function (resolve, reject) {
+        reject = reject || emptyFunction;
 
-        ajaxQueue.remove(httpKey);
-        that.afterRequest(config);
+        let requestOptions = {
+          url: config.url,
+          method: config.method || Methods.GET,
+          data: config.data || {},
+          headers: this.prepareHeader(config),
+          cache: false,
+          timeout: that.options.timeout
 
-        const retCode = that.transformResponseCode(resp);
+        };
 
-        if (that.options.isSuccess(retCode)) {
-          cachepattern && cache.set(httpKey, resp, cachepattern);
-          resolve(that.transformResponseData(resp));
-        } else {
+        if (config.responseType) {
+          requestOptions['responseType'] = config.responseType;
+        }
+
+        if (config.cancelToken) {
+          requestOptions['cancelToken'] = config.cancelToken;
+        }
+
+        return that.$axios().then((response) => {
+          const resp = response.data;
+
+          QueueManager.remove(httpKey);
+          that.afterRequest(config);
+          if (that.checkReponseTypeIsFile(config.responseType)) {
+            resolve(resp);
+          } else {
+            const retCode = that.transformResponseCode(resp);
+
+            if (that.options.isSuccess(retCode)) {
+              cachepattern && cache.set(httpKey, resp, cachepattern);
+              resolve(that.transformResponseData(resp));
+            } else {
+              that.report(response);
+              if (!silent) {
+                that.__showError(retCode, config.codes);
+              }
+              reject({response, msgErrId: that.__msgErrTag(), biz: 1});
+            }
+          }
+
+        }).catch((response) => {
+          QueueManager.remove(httpKey);
+          that.afterRequest(config);
           that.report(response);
           if (!silent) {
-            that.__showError(retCode, config.codes);
+            that.__showError(that.transformHttpStatus(response));
           }
-          reject({response, msgErrId: that.__msgErrTag(), biz: 1});
-        }
-      }).catch((response) => {
-        ajaxQueue.remove(httpKey);
-        that.afterRequest(config);
-        that.report(response);
-        if (!silent) {
-          that.__showError(that.transformHttpStatus(response));
-        }
-        reject({response, msgErrId: that.__msgErrTag()});
+          reject({response, msgErrId: that.__msgErrTag()});
+        });
       });
-    });
 
-    return promise;
+      return promise;
+    }
+
+    return {
+      cancel: CancelManager.get(httpKey),
+      request
+    };
   }
 
   getLoadingState(config) {
@@ -341,31 +360,40 @@ export default class HttpExt {
 
     return opts;
   }
-  $put(url, reqData = {}, opts = {}) {
 
-    opts.method = Methods.PUT;
-    return this.request(url, reqData, opts);
+  genCancelToken(httpKey) {
+
+    return new CancelToken((cancel) => {
+      CancelManager.push(httpKey, cancel);
+    });
   }
 
-  $delete(url, reqData = {}, opts = {}) {
+  /**
+   *
+   * @param url: 请求的地址,搭配全局的path,和apiurl组成完整的url路径
+   * @param reqData: {
+   *   data:请求数据,
+   *   query:用于在非get情况下,需要在url后面增加query参数的情况
+   * }
+   * @param opts
+   * @returns {*}
+   */
+  $request(url, reqData = {}, opts = {}) {
+    let {data, query} = reqData;
 
-    opts.method = Methods.DELETE;
+    opts.url = this.mixUrl(url, query, opts.apiUrl);
+    opts.data = data;
+    opts.httpKey = this.getUniqueKey(opts);
 
-    return this.request(url, reqData, opts);
-  }
+    let httpKey = opts.httpKey;
 
-  $post(url, reqData = {}, opts = {}) {
+    if (!QueueManager.check(httpKey)) {
 
-    opts.method = Methods.POST;
+      return this.request(opts);
 
-    return this.request(url, reqData, opts);
-  }
+    }
+    return null;
 
-  $get(url, reqData = {}, opts = {}) {
-
-    opts.method = Methods.GET;
-
-    return this.request(url, reqData, opts);
   }
 
   __msgErrTag() {
