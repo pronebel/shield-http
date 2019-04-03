@@ -1,10 +1,13 @@
 ## shield-http
-
+  - report
+  - 交互: loading,alert
   - code
   - error 
   - cache
   - loading
   - queue
+  - auth行为
+  - 重复点击的问题
   
   
   - 基于ajax下载文件(图片,excel,csv)的最佳实践封装

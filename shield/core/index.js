@@ -2,7 +2,7 @@ import utils from '../../axios-lib/utils';
 import axios from '../../axios-lib/axios';
 import rules from './rule';
 import axiosCreateError from '../../axios-lib/core/createError';
-
+import uuidv4 from 'uuid/v4';
 import urljoin from 'url-join';
 import Params from 'querystringify';
 import Methods from '../constant/method';
@@ -11,11 +11,14 @@ import sessionType from '../constant/session';
 import {cache} from 'shield-store';
 import ICode from '../code';
 import ajaxQueue from './queue';
+import CancelToken from '../../axios-lib/cancel/CancelToken'
 
 import logger from './logger';
 
 const emptyFunction = function () {
 };
+
+const EVENTS = ['authError'];
 
 /**
  * default options
@@ -29,7 +32,10 @@ let defaultOptions = {
   apiPrefix: '/',
   pathPrefix: '/',
   cacheMethods: [Methods.GET],
-  defaultErrorMessage: 'request error'
+  defaultErrorMessage: 'request error',
+  isSuccess: function () {
+    return true;
+  }
 };
 
 export default class HttpExt {
@@ -69,9 +75,9 @@ export default class HttpExt {
   }
 
   injectGlobalCodes() {
-    let {codes, status, error, isSuccess} = this.options || {};
+    let {codes, status, error} = this.options || {};
 
-    this.$code = new ICode({codes, status, error, isSuccess});
+    this.$code = new ICode({codes, status, error});
   }
   injectAuthority(auth) {
     /**
@@ -155,9 +161,9 @@ export default class HttpExt {
     if (resData) {
       return new Promise(function (resolve, reject) {
         setTimeout(function () {
-          const retCode = that.getResponseBizCode(resData);
+          const retCode = that.transformResponseCode(resData);
 
-          if (this.$code.isSuccess(retCode)) {
+          if (this.options.isSuccess(retCode)) {
             resolve(resData);
           } else {
             reject(resData);
@@ -174,7 +180,9 @@ export default class HttpExt {
    * @param data
    * @returns {string}
    */
-  getUniqueKey(url, data) {
+  getUniqueKey(config) {
+    let {url, data} = config || {};
+
     return url + JSON.stringify(data);
   }
 
@@ -211,6 +219,13 @@ export default class HttpExt {
     return {};
 
   }
+  genCancelToken(){
+    let uuid = uuidv4();
+    return new CancelToken((c)=>{
+      // 这里的ajax标识我是用请求地址&请求方式拼接的字符串，当然你可以选择其他的一些方式
+      pending.push({ u: config.url + '&' + config.method, f: c });
+    });
+  }
   /**
    * http的封装
    * @param config:{
@@ -228,7 +243,8 @@ export default class HttpExt {
 
     config.url = this.mixUrl(url, query, config.apiUrl);
     config.data = data;
-    const httpKey = this.getUniqueKey(config.url, config.data);
+
+    const httpKey = this.getUniqueKey(config);
 
     // 检查缓存里是否有数据
     const pattern = rules.cacheEnableInMethod(config.method, this.options.cacheMethods) ? config.cache : null;
@@ -281,26 +297,26 @@ export default class HttpExt {
         ajaxQueue.remove(httpKey);
         that.afterRequest(config);
 
-        const retCode = that.getResponseBizCode(resp);
+        const retCode = that.transformResponseCode(resp);
 
-        if (that.$code.isSuccess(retCode)) {
+        if (that.options.isSuccess(retCode)) {
           cachepattern && cache.set(httpKey, resp, cachepattern);
-          resolve(that.getResponseData(resp));
+          resolve(that.transformResponseData(resp));
         } else {
           that.report(response);
           if (!silent) {
             that.__showError(retCode, config.codes);
           }
-          reject({response, msgErrId: that.msgErrTag(), biz: 1});
+          reject({response, msgErrId: that.__msgErrTag(), biz: 1});
         }
       }).catch((response) => {
         ajaxQueue.remove(httpKey);
         that.afterRequest(config);
         that.report(response);
         if (!silent) {
-          that.__showError(that.getReponseHttpStatus(response));
+          that.__showError(that.transformHttpStatus(response));
         }
-        reject({response, msgErrId: that.msgErrTag()});
+        reject({response, msgErrId: that.__msgErrTag()});
       });
     });
 
@@ -325,7 +341,6 @@ export default class HttpExt {
 
     return opts;
   }
-
   $put(url, reqData = {}, opts = {}) {
 
     opts.method = Methods.PUT;
@@ -353,8 +368,8 @@ export default class HttpExt {
     return this.request(url, reqData, opts);
   }
 
-  msgErrTag() {
-    return Math.random().toString(36).substring(2, 15);
+  __msgErrTag() {
+    return this.msgGenerateId();
   }
   __showRequestState(config) {
     const loadBar = this.getLoadingState(config);
@@ -366,9 +381,17 @@ export default class HttpExt {
 
     return this.hideRequestState(loadBar);
   }
+  __showError(retCode, customCode, isBizError) {
+    const errResult = isBizError ? this.$code.checkBiz(retCode, customCode) : this.$code.checkHttp(retCode);
 
+    if (errResult) {
+      this.showError(errResult.message || this.options.defaultErrorMessage);
+    }
+  }
   // ////////////////////////////////////  需要根据实际情况重载  //////////////////////////////////////////////////////
-
+  msgGenerateId() {
+    return Math.random().toString(36).substring(2, 15);
+  }
   showRequestState(loadingBar) {
 
     //
@@ -383,13 +406,6 @@ export default class HttpExt {
      */
   }
 
-  __showError(retCode, customCode, isBizError) {
-    const errResult = isBizError ? this.$code.checkBiz(retCode, customCode) : this.$code.checkHttp(retCode);
-
-    if (errResult) {
-      this.showError(errResult.message || this.options.defaultErrorMessage);
-    }
-  }
   showError(message) {
 
     // dialog.alert(resp.retMessage || resp.exception || "服务器错误")
@@ -408,7 +424,7 @@ export default class HttpExt {
    * virtual
    * @param resp
    */
-  getResponseData(resp) {
+  transformResponseData(resp) {
 
   }
 
@@ -416,7 +432,7 @@ export default class HttpExt {
    * virtual
    * @param resp
    */
-  getResponseBizCode(resp) {
+  transformResponseCode(resp) {
 
   }
 
@@ -424,7 +440,7 @@ export default class HttpExt {
    * virtual
    * @param resp
    */
-  getReponseHttpStatus(resp) {
+  transformHttpStatus(resp) {
     return null;
   }
 }

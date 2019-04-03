@@ -13,7 +13,7 @@ class ICode {
     this.$status = options.status || [];
     this.$bizcode = options.codes || [];
     this.assembleErrorMsg = options.error || emptyFunction();
-    this.isSuccess = options.isSuccess;
+
   }
 
   checkHttp(codeVal) {
