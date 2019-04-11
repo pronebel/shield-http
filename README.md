@@ -1,14 +1,14 @@
 ## shield-http
-  - report
+  - report  : 实例重载
   - 交互: loading,alert
-  - code
+  - code 
   - error 
   - cache
   - loading
   - queue
-  - auth行为
+  - auth行为: 通过具体的请求的options进行配置,在请求实例里面进行定义auth获取
   - 重复点击的问题
-  
+  - 取消请求的交互   √
   
   - 基于ajax下载文件(图片,excel,csv)的最佳实践封装
   - 短轮询的实现
@@ -37,20 +37,5 @@ https://github.com/AngelAngelov/ajax-file-downloader/blob/master/lib/ajax-file-d
 - 基础header的上浮到http的实例从去构建
 
 
-# Auth 需要的基础类
 
-
-
-  ```
-  
-  export let getToken = function () {
-  
-  }
-  export let setToken = function (token) {
-  
-  }
-  export let clear = function () {
-   
-  }
-  
   ```

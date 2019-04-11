@@ -14,7 +14,7 @@ import QueueManager from './queue';
 import CancelManager from './cancel';
 import CancelToken from '../../axios-lib/cancel/CancelToken';
 
-import logger from './logger';
+
 
 const emptyFunction = function () {
 };
@@ -61,7 +61,7 @@ export default class HttpExt {
    * }
    * @param options
    */
-  constructor(options, auth, axiosInstance) {
+  constructor(options, axiosInstance) {
     this.options = Object.assign(defaultOptions, options);
 
     this.transterType = options.transterType;
@@ -69,7 +69,6 @@ export default class HttpExt {
 
     this.injectHeaders();
     this.injectGlobalCodes();
-    this.injectAuthority(auth);
 
     /**
      * refer Constant Var
@@ -82,15 +81,6 @@ export default class HttpExt {
     let {codes, status, error} = this.options || {};
 
     this.$code = new ICode({codes, status, error});
-  }
-  injectAuthority(auth) {
-    /**
-     * 确保有以下几种方式:
-     * getToken
-     * setToken
-     * clear
-     */
-    this.$auth = auth;
   }
 
   /**
@@ -110,12 +100,11 @@ export default class HttpExt {
   }
 
   /**
-   * virtual:getToken
+   * virtual:checkAuthorize
    * @returns {null}
    */
-  getToken() {
-    return null;
-    // return this.$auth.getToken ? this.$auth.getToken() : null;
+  checkAuthorize() {
+    return true;
   }
 
   mixUri(bizurl, params = {}, apiUrl) {
@@ -163,17 +152,22 @@ export default class HttpExt {
     const resData = cache.get(key);
 
     if (resData) {
-      return new Promise(function (resolve, reject) {
-        setTimeout(function () {
-          const retCode = that.transformResponseCode(resData);
+      return {
+        cancel: null,
+        request: function () {
+          return new Promise(function (resolve, reject) {
+            setTimeout(function () {
+              const retCode = that.transformResponseCode(resData);
 
-          if (this.options.isSuccess(retCode)) {
-            resolve(resData);
-          } else {
-            reject(resData);
-          }
-        }, 0);
-      });
+              if (this.options.isSuccess(retCode)) {
+                resolve(resData);
+              } else {
+                reject(resData);
+              }
+            }, 0);
+          });
+        }
+      };
     }
     return null;
   }
@@ -379,6 +373,13 @@ export default class HttpExt {
    * @returns {*}
    */
   $request(url, reqData = {}, opts = {}) {
+
+    if (opts.authorize === true) {
+      if (!this.checkAuthorize()) {
+        return Promise.reject();
+      }
+    }
+
     let {data, query} = reqData;
 
     opts.url = this.mixUrl(url, query, opts.apiUrl);
@@ -392,7 +393,7 @@ export default class HttpExt {
       return this.request(opts);
 
     }
-    return null;
+    return Promise.reject();
 
   }
 
